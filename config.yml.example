@@ -1,0 +1,26 @@
+# Configuration for the LeChacal CT Clamp Raspberry Pi board, to read and send
+# data back to Home Assistant.
+# Refer to http://lechacal.com/wiki/index.php?title=RPICT7V1_v2.0 for details.
+#
+############################################################
+
+serialPort: /dev/ttyAMA0
+baudRate: 38400
+
+# The device can read slightly high/low, so an offset is added to every numeric
+# reading. Set to 0 if you don't want to add any offset.
+IrmsMAoffset: 0   # e.g. -240 subtracts ~240 mA from the readings.
+
+# Home Assistant MQTT server:
+mqttServer: 127.0.0.1
+mqttPort: 1883
+# mqttUsername: your_user
+# mqttPassword: your_password
+mqttTopic: homeassistant
+mqttDevicename: lechacal1
+
+# As there are many devices that all return data the same way, we use a JSON
+# 'mapping' file. This file tells the process how to 'parse' the data so it can
+# be correctly sent to Home Assistant. See the device-mapping/ directory for the
+# available devices; copy an existing file to add a new one.
+deviceMapping: RPICT7V1.json

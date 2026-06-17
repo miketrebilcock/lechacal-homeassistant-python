@@ -1,0 +1,4 @@
+pyserial>=3.5
+# paho-mqtt 1.6.x callback API; pinned below 2.0 to keep on_connect signature stable.
+paho-mqtt>=1.6,<2.0
+PyYAML>=5.4

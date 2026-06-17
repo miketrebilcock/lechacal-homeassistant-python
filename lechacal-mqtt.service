@@ -1,0 +1,17 @@
+[Unit]
+Description=LeChacal CT Clamp -> Home Assistant MQTT bridge
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+Environment=LECHACAL_CONFIG=/etc/lechacal-mqtt/config.yml
+ExecStart=/opt/lechacal-mqtt/venv/bin/python /opt/lechacal-mqtt/server.py
+WorkingDirectory=/opt/lechacal-mqtt
+User=lechacal
+SupplementaryGroups=dialout
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
