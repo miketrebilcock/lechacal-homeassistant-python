@@ -7,3 +7,7 @@ venv/
 
 # Local config (never commit real credentials)
 config.yml
+
+# Editor / IDE
+.vscode/
+.idea/

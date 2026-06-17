@@ -106,7 +106,9 @@ sensor value (clamped to ≥0) and a `<name>_export` value for any negative
 sudo ./uninstall.sh
 ```
 
-## Running locally (development)
+## Developing & contributing
+
+You can develop and test on any machine — a Pi isn't required. Quick start:
 
 ```bash
 python3 -m venv venv
@@ -115,6 +117,10 @@ pip install -r requirements.txt
 cp config.yml.example config.yml   # edit it
 LECHACAL_CONFIG=./config.yml python server.py
 ```
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the full guide — testing without
+hardware, adding support for a new board, code style, and how to submit a pull
+request.
 
 ## License
 
