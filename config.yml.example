@@ -11,6 +11,12 @@ baudRate: 38400
 # reading. Set to 0 if you don't want to add any offset.
 IrmsMAoffset: 0   # e.g. -240 subtracts ~240 mA from the readings.
 
+# Seconds to average readings over before publishing to MQTT. The board emits
+# several (noisy) readings per second; averaging smooths the data and keeps Home
+# Assistant's recorder database from growing too quickly. Set to 0 to publish
+# every reading as it arrives.
+publishInterval: 5
+
 # Home Assistant MQTT server:
 mqttServer: homeassistant.local
 mqttPort: 1883

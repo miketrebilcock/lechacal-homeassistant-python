@@ -80,10 +80,21 @@ MQTT_TOPIC = cfg("mqttTopic", "homeassistant")
 MQTT_DEVICENAME = cfg("mqttDevicename", "lechacal")
 DEVICE_MAPPING = cfg("deviceMapping", "RPICT7V1.json")
 
+# Seconds to average readings over before publishing. CT-clamp readings are
+# noisy and the board emits several per second; averaging smooths the data and
+# keeps Home Assistant's recorder database from growing too fast. Set to 0 to
+# publish every reading as it arrives.
+PUBLISH_INTERVAL = float(cfg("publishInterval", 5))
+
 with open(os.path.join(DEVICE_MAPPING_DIR, DEVICE_MAPPING), "r") as fh:
     response_template = json.load(fh)
 
 received_serial_data = False
+
+# Buffer of readings accumulated between flushes when PUBLISH_INTERVAL > 0.
+_readings_lock = threading.Lock()
+_numeric_buffer = {}   # name -> list[float]   (averaged on flush)
+_latest_strings = {}   # name -> str           (last value wins)
 
 # ---------------------------------------------------------------------------
 # Value parsing
@@ -167,6 +178,11 @@ def create_ha_sensor(client, name, unit_of_measurement, icon):
 
 
 def push_ha_sensor_data(client, name, data):
+    if isinstance(data, str):
+        # Non-numeric field: publish the raw value, nothing to export.
+        client.publish(state_topic(name), data)
+        client.publish(state_topic(f"{name}_export"), "0")
+        return
     import_value = data if data > 0 else 0
     export_value = abs(data) if data < 0 else 0
     client.publish(state_topic(name), str(import_value))
@@ -201,27 +217,80 @@ def schedule_sensor_refresh(client):
 # Serial handling
 # ---------------------------------------------------------------------------
 
-def handle_serial_line(client, line):
-    """Port of the ``parser.on('data')`` handler."""
-    global received_serial_data
-
+def parse_line(line):
+    """Parse one serial line into ``{name: value}`` for every field that parses
+    cleanly. Values are floats for numeric fields, strings for string fields."""
     # Values from the sensor are separated by spaces/tabs/commas.
     values = re.split(r"[ ,\t]+", line.strip())
 
+    parsed = {}
     for count, key in enumerate(response_template.keys()):
         try:
             if count >= len(values):
                 continue
             value = parse_value(values[count], key)
             if isinstance(value, str) or not math.isnan(value):
-                push_ha_sensor_data(client, key, value)
+                parsed[key] = value
         except Exception as exc:  # noqa: BLE001 - mirror JS try/catch per field
             print(exc, file=sys.stderr, flush=True)
+    return parsed
+
+
+def handle_serial_line(client, line):
+    """Port of the ``parser.on('data')`` handler.
+
+    When ``PUBLISH_INTERVAL`` is 0 each reading is published immediately;
+    otherwise readings are buffered and averaged by the flush thread.
+    """
+    global received_serial_data
+
+    parsed = parse_line(line)
+
+    if PUBLISH_INTERVAL > 0:
+        with _readings_lock:
+            for name, value in parsed.items():
+                if isinstance(value, str):
+                    _latest_strings[name] = value
+                else:
+                    _numeric_buffer.setdefault(name, []).append(value)
+    else:
+        for name, value in parsed.items():
+            push_ha_sensor_data(client, name, value)
 
     if not received_serial_data:
-        print("Received data from sensor, and posted to MQTT... "
-              "Program is up and running!", flush=True)
+        print("Received data from sensor... Program is up and running!",
+              flush=True)
         received_serial_data = True
+
+
+def flush_averages(client):
+    """Publish the mean of each buffered numeric field (and the latest value of
+    each string field), then clear the buffers."""
+    with _readings_lock:
+        numeric = {name: vals for name, vals in _numeric_buffer.items() if vals}
+        strings = dict(_latest_strings)
+        _numeric_buffer.clear()
+        _latest_strings.clear()
+
+    for name, values in numeric.items():
+        push_ha_sensor_data(client, name, sum(values) / len(values))
+    for name, value in strings.items():
+        push_ha_sensor_data(client, name, value)
+
+
+def schedule_average_flush(client):
+    """Flush averaged readings to MQTT every ``PUBLISH_INTERVAL`` seconds."""
+    def _flush():
+        while True:
+            time.sleep(PUBLISH_INTERVAL)
+            try:
+                flush_averages(client)
+            except Exception as exc:  # noqa: BLE001 - keep the thread alive
+                print(f"Error flushing averages: {exc}", file=sys.stderr,
+                      flush=True)
+
+    thread = threading.Thread(target=_flush, daemon=True)
+    thread.start()
 
 
 # ---------------------------------------------------------------------------
@@ -247,6 +316,10 @@ def main():
     client.loop_start()
 
     schedule_sensor_refresh(client)
+    if PUBLISH_INTERVAL > 0:
+        print(f"Averaging readings over {PUBLISH_INTERVAL:g}s before publishing.",
+              flush=True)
+        schedule_average_flush(client)
 
     print("Connecting to serial port...", flush=True)
     ser = serial.Serial(SERIAL_PORT, BAUD_RATE, timeout=10)

@@ -16,8 +16,10 @@ LeChacal board ──serial──> server.py ──MQTT──> Home Assistant
    `/etc/lechacal-mqtt/config.yml`, then `./config.yml`).
 2. Load a **device-mapping** JSON describing each serial column in order.
 3. On each serial line: split on whitespace/commas, parse each column per its
-   mapping (type coercion, optional `IrmsMAoffset`, optional `convertMath`), and
-   publish to MQTT with Home Assistant auto-discovery.
+   mapping (type coercion, optional `IrmsMAoffset`, optional `convertMath`).
+   Readings are then averaged over `publishInterval` seconds (numeric fields →
+   mean, string fields → last value) and published to MQTT with Home Assistant
+   auto-discovery. Set `publishInterval: 0` to publish every reading immediately.
 4. Re-publish the discovery config every 5 minutes so entities survive an HA
    restart.
 

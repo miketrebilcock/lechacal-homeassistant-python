@@ -78,6 +78,7 @@ sudo systemctl restart lechacal-mqtt
 | `serialPort`     | `/dev/ttyAMA0`   | Serial device the board is connected to.      |
 | `baudRate`       | `38400`          | Serial baud rate.                             |
 | `IrmsMAoffset`   | `0`              | Offset added to every numeric reading.        |
+| `publishInterval`| `5`              | Seconds to average readings over before publishing; `0` = publish every reading. |
 | `mqttServer`     | `0.0.0.0`        | MQTT broker host.                             |
 | `mqttPort`       | `1883`           | MQTT broker port.                             |
 | `mqttUsername`   | _(none)_         | MQTT username (optional).                     |
