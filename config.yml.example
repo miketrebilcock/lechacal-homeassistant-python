@@ -4,7 +4,7 @@
 #
 ############################################################
 
-serialPort: /dev/ttyAMA0
+serialPort: /dev/ttyS0
 baudRate: 38400
 
 # The device can read slightly high/low, so an offset is added to every numeric
@@ -12,7 +12,7 @@ baudRate: 38400
 IrmsMAoffset: 0   # e.g. -240 subtracts ~240 mA from the readings.
 
 # Home Assistant MQTT server:
-mqttServer: 127.0.0.1
+mqttServer: homeassistant.local
 mqttPort: 1883
 # mqttUsername: your_user
 # mqttPassword: your_password
