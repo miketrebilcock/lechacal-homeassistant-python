@@ -103,23 +103,33 @@ sensor value (clamped to ≥0) and a `<name>_export` value for any negative
 
 ## Energy & cost tracking
 
-The real-power channels (e.g. `RP1`–`RP7` on the RPICT7V1) are published as power
-sensors in watts (`device_class: power`). For each one, the bridge also derives a
-**cumulative energy sensor in kWh** — `<name>_energy` (e.g. `sensor.lechacal1_RP1_energy`)
-— by integrating power over time. These are published as `device_class: energy` /
-`state_class: total_increasing`, which is exactly what Home Assistant's **Energy
-dashboard** and cost integrations (e.g. the **Octopus Energy cost tracker**)
-expect.
+Every power channel (any field measured in watts — `RP*`/`Realpower*`/`P*`
+depending on your board) is published as a power sensor (`device_class: power`).
+For each one, the bridge also derives a **cumulative energy sensor in kWh** —
+`<name>_energy` (e.g. `sensor.lechacal1_RP1_energy`) — by integrating power over
+time. These are published as `device_class: energy` / `state_class:
+total_increasing`, which is exactly what Home Assistant's **Energy dashboard** and
+cost integrations (e.g. the **Octopus Energy cost tracker**) expect.
+
+> **Accuracy depends on your board.** Boards with mains-voltage sensing
+> (RPICT3V1, RPICT4V3, RPICT7V1) report *true real power*, so the energy figures
+> account for power factor. Boards **without** voltage sensing (RPICT3T1, RPICT8)
+> report *estimated* power — current × a fixed assumed voltage configured on the
+> board, with power factor assumed to be 1. Their energy/cost figures are good
+> ballpark estimates but will drift from a revenue meter, especially on reactive
+> loads (motors, fridges). Set the board's assumed voltage close to your actual
+> mains for the best results.
 
 The running totals are persisted to `/var/lib/lechacal-mqtt/energy_state.json` so
 they survive a service restart and don't reset to zero.
 
 To get per-circuit cost (daily/weekly/monthly), add a cost tracker against each
 `*_energy` sensor — for the Octopus Energy integration: *Settings → Devices &
-Services → Octopus Energy → Add entry → Cost Tracker*, then pick the
-`sensor.<devicename>_RP#_energy` sensor and mark it as an accumulative (increasing)
-value. (Cost trackers are always added manually in that integration — it doesn't
-create them automatically, even for other device types.)
+Services → Octopus Energy → Add entry → Cost Tracker*, then pick the relevant
+`sensor.<devicename>_<channel>_energy` sensor (e.g. `_RP1_energy` on an RPICT7V1,
+`_P1_energy` on an RPICT3T1) and mark it as an accumulative (increasing) value.
+(Cost trackers are always added manually in that integration — it doesn't create
+them automatically, even for other device types.)
 
 > Only positive (consumed) power is integrated into the energy total, which is
 > what gets billed. If you also need exported energy per channel (e.g. a circuit

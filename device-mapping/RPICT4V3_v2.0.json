@@ -27,22 +27,22 @@
     "Realpower1": {
         "type": "float",
         "unit_of_measurement": "W",
-        "icon": ""
+        "icon": "flash"
     },
     "Realpower2": {
         "type": "float",
         "unit_of_measurement": "W",
-        "icon": ""
+        "icon": "flash"
     },
     "Realpower3": {
         "type": "float",
         "unit_of_measurement": "W",
-        "icon": ""
+        "icon": "flash"
     },
     "Realpower4": {
         "type": "float",
         "unit_of_measurement": "W",
-        "icon": ""
+        "icon": "flash"
     },
     "Irms1": {
         "type": "float",
