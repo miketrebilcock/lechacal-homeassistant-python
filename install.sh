@@ -11,6 +11,7 @@ SERVICE_NAME="lechacal-mqtt"
 SERVICE_USER="lechacal"
 INSTALL_DIR="/opt/lechacal-mqtt"
 CONFIG_DIR="/etc/lechacal-mqtt"
+STATE_DIR="/var/lib/lechacal-mqtt"
 UNIT_PATH="/etc/systemd/system/${SERVICE_NAME}.service"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -50,6 +51,10 @@ python3 -m venv "${INSTALL_DIR}/venv"
 "${INSTALL_DIR}/venv/bin/pip" install -r "${INSTALL_DIR}/requirements.txt"
 
 chown -R "${SERVICE_USER}:${SERVICE_USER}" "${INSTALL_DIR}"
+
+echo "==> Creating state directory ${STATE_DIR}..."
+mkdir -p "${STATE_DIR}"
+chown "${SERVICE_USER}:${SERVICE_USER}" "${STATE_DIR}"
 
 echo "==> Installing configuration to ${CONFIG_DIR}..."
 mkdir -p "${CONFIG_DIR}"

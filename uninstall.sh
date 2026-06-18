@@ -9,6 +9,7 @@ SERVICE_NAME="lechacal-mqtt"
 SERVICE_USER="lechacal"
 INSTALL_DIR="/opt/lechacal-mqtt"
 CONFIG_DIR="/etc/lechacal-mqtt"
+STATE_DIR="/var/lib/lechacal-mqtt"
 UNIT_PATH="/etc/systemd/system/${SERVICE_NAME}.service"
 
 if [[ "${EUID}" -ne 0 ]]; then
@@ -21,8 +22,8 @@ systemctl disable --now "${SERVICE_NAME}.service" 2>/dev/null || true
 rm -f "${UNIT_PATH}"
 systemctl daemon-reload
 
-echo "==> Removing ${INSTALL_DIR}..."
-rm -rf "${INSTALL_DIR}"
+echo "==> Removing ${INSTALL_DIR} and ${STATE_DIR}..."
+rm -rf "${INSTALL_DIR}" "${STATE_DIR}"
 
 read -r -p "Also remove config at ${CONFIG_DIR}? [y/N] " reply
 if [[ "${reply}" =~ ^[Yy]$ ]]; then

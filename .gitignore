@@ -8,6 +8,10 @@ venv/
 # Local config (never commit real credentials)
 config.yml
 
+# Local dev energy-state file (when /var/lib isn't writable)
+energy_state.json
+energy_state.json.tmp
+
 # Editor / IDE
 .vscode/
 .idea/

@@ -89,12 +89,32 @@ PUBLISH_INTERVAL = float(cfg("publishInterval", 5))
 with open(os.path.join(DEVICE_MAPPING_DIR, DEVICE_MAPPING), "r") as fh:
     response_template = json.load(fh)
 
+# Power fields (unit "W") get a derived cumulative-energy (kWh) sensor so Home
+# Assistant's Energy dashboard / the Octopus cost tracker can use them.
+POWER_FIELDS = [name for name, m in response_template.items()
+                if m.get("unit_of_measurement") == "W"]
+
+# Where the running energy totals are persisted so they survive a service
+# restart (a total_increasing sensor must not jump back to zero).
+STATE_FILE = os.environ.get("LECHACAL_STATE_FILE")
+if not STATE_FILE:
+    for _d in ("/var/lib/lechacal-mqtt", BASE_DIR):
+        if os.path.isdir(_d) and os.access(_d, os.W_OK):
+            STATE_FILE = os.path.join(_d, "energy_state.json")
+            break
+
 received_serial_data = False
 
 # Buffer of readings accumulated between flushes when PUBLISH_INTERVAL > 0.
 _readings_lock = threading.Lock()
 _numeric_buffer = {}   # name -> list[float]   (averaged on flush)
 _latest_strings = {}   # name -> str           (last value wins)
+
+# Cumulative consumed energy in kWh per power field, integrated from power.
+_energy_lock = threading.Lock()
+_energy_kwh = {}            # name -> cumulative kWh
+_last_energy_ts = None      # time.monotonic() of the last integration step
+_last_save_ts = 0.0         # throttle how often we write STATE_FILE
 
 # ---------------------------------------------------------------------------
 # Value parsing
@@ -145,6 +165,63 @@ def parse_value(data, config_item):
 
 
 # ---------------------------------------------------------------------------
+# Energy integration (power W -> cumulative kWh) with persistence
+# ---------------------------------------------------------------------------
+
+def load_energy_state():
+    """Restore cumulative energy totals from disk on startup."""
+    if STATE_FILE and os.path.exists(STATE_FILE):
+        try:
+            with open(STATE_FILE, "r") as fh:
+                saved = json.load(fh)
+            with _energy_lock:
+                _energy_kwh.update({k: float(v) for k, v in saved.items()})
+            print(f"Restored energy totals from {STATE_FILE}", flush=True)
+        except Exception as exc:  # noqa: BLE001 - start fresh if unreadable
+            print(f"Could not read {STATE_FILE}: {exc}", file=sys.stderr,
+                  flush=True)
+
+
+def save_energy_state(force=False):
+    """Persist energy totals, throttled to at most once every 30s unless forced."""
+    global _last_save_ts
+    if not STATE_FILE:
+        return
+    now = time.monotonic()
+    if not force and (now - _last_save_ts) < 30:
+        return
+    _last_save_ts = now
+    try:
+        with _energy_lock:
+            snapshot = dict(_energy_kwh)
+        tmp = f"{STATE_FILE}.tmp"
+        with open(tmp, "w") as fh:
+            json.dump(snapshot, fh)
+        os.replace(tmp, STATE_FILE)
+    except Exception as exc:  # noqa: BLE001 - don't let persistence kill the loop
+        print(f"Could not write {STATE_FILE}: {exc}", file=sys.stderr, flush=True)
+
+
+def update_energy(client, power_values):
+    """Integrate the given power readings (W) over elapsed time into kWh totals
+    and publish each ``<name>_energy`` state. Only positive (consumed) power is
+    accumulated, which is what the cost tracker bills."""
+    global _last_energy_ts
+    now = time.monotonic()
+    dt_hours = 0.0 if _last_energy_ts is None else (now - _last_energy_ts) / 3600.0
+    _last_energy_ts = now
+
+    with _energy_lock:
+        for name, power_w in power_values.items():
+            consumed_w = power_w if power_w > 0 else 0.0
+            _energy_kwh[name] = _energy_kwh.get(name, 0.0) + \
+                consumed_w * dt_hours / 1000.0
+            client.publish(state_topic(f"{name}_energy"),
+                           f"{_energy_kwh[name]:.6f}")
+    save_energy_state()
+
+
+# ---------------------------------------------------------------------------
 # Home Assistant MQTT discovery + state
 # ---------------------------------------------------------------------------
 
@@ -152,7 +229,8 @@ def state_topic(name):
     return f"{MQTT_TOPIC}/sensor/{MQTT_DEVICENAME}_{name}"
 
 
-def create_ha_sensor(client, name, unit_of_measurement, icon):
+def create_ha_sensor(client, name, unit_of_measurement, icon,
+                     device_class=None, state_class=None):
     config_payload = {
         "name": name,
         "unique_id": f"{MQTT_DEVICENAME}_{name}",
@@ -166,9 +244,14 @@ def create_ha_sensor(client, name, unit_of_measurement, icon):
             "manufacturer": "Lechacal",
         },
     }
-    if unit_of_measurement == "W":
-        config_payload["device_class"] = "power"
-        config_payload["state_class"] = "measurement"
+    # Power fields get auto-classified; energy fields pass explicit classes.
+    if unit_of_measurement == "W" and not device_class:
+        device_class = "power"
+        state_class = "measurement"
+    if device_class:
+        config_payload["device_class"] = device_class
+    if state_class:
+        config_payload["state_class"] = state_class
 
     client.publish(
         f"{state_topic(name)}/config",
@@ -196,6 +279,12 @@ def create_ha_sensors(client):
         icon = mapping.get("icon", "")
         create_ha_sensor(client, key, unit, icon)
         create_ha_sensor(client, f"{key}_export", unit, icon)
+        # Cumulative energy (kWh) for power channels - what the Energy dashboard
+        # and the Octopus cost tracker consume.
+        if key in POWER_FIELDS:
+            create_ha_sensor(client, f"{key}_energy", "kWh", "lightning-bolt",
+                             device_class="energy",
+                             state_class="total_increasing")
 
 
 def schedule_sensor_refresh(client):
@@ -256,6 +345,8 @@ def handle_serial_line(client, line):
     else:
         for name, value in parsed.items():
             push_ha_sensor_data(client, name, value)
+        power_values = {n: v for n, v in parsed.items() if n in POWER_FIELDS}
+        update_energy(client, power_values)
 
     if not received_serial_data:
         print("Received data from sensor... Program is up and running!",
@@ -272,10 +363,14 @@ def flush_averages(client):
         _numeric_buffer.clear()
         _latest_strings.clear()
 
-    for name, values in numeric.items():
-        push_ha_sensor_data(client, name, sum(values) / len(values))
+    means = {name: sum(vals) / len(vals) for name, vals in numeric.items()}
+    for name, value in means.items():
+        push_ha_sensor_data(client, name, value)
     for name, value in strings.items():
         push_ha_sensor_data(client, name, value)
+
+    power_means = {n: v for n, v in means.items() if n in POWER_FIELDS}
+    update_energy(client, power_means)
 
 
 def schedule_average_flush(client):
@@ -306,6 +401,8 @@ def on_connect(client, userdata, flags, rc, properties=None):
 
 
 def main():
+    load_energy_state()
+
     print("Establishing MQTT connection...", flush=True)
     client = mqtt.Client()
     if MQTT_USERNAME:
@@ -334,6 +431,7 @@ def main():
     except KeyboardInterrupt:
         pass
     finally:
+        save_energy_state(force=True)
         ser.close()
         client.loop_stop()
         client.disconnect()

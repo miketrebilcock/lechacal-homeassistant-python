@@ -60,6 +60,9 @@ LECHACAL_CONFIG=./config.yml python server.py
 - `LECHACAL_CONFIG` — path to the config file.
 - `LECHACAL_DEVICE_MAPPING_DIR` — directory of mapping JSONs (defaults to the
   bundled `device-mapping/`).
+- `LECHACAL_STATE_FILE` — where cumulative energy totals are persisted (defaults
+  to `/var/lib/lechacal-mqtt/energy_state.json`, falling back to the app dir for
+  local dev).
 
 ## Testing without hardware
 
@@ -111,7 +114,7 @@ Each key maps to an object:
 | Field | Required | Notes |
 | --- | --- | --- |
 | `type` | yes | `"float"`, `"integer"`, or `"string"`. |
-| `unit_of_measurement` | yes | HA unit, e.g. `"A"`, `"V"`, `"W"`. A value of `"W"` also tags the entity as `device_class: power` / `state_class: measurement`. |
+| `unit_of_measurement` | yes | HA unit, e.g. `"A"`, `"V"`, `"W"`. A value of `"W"` tags the entity as `device_class: power` / `state_class: measurement` **and** makes the bridge derive a cumulative `<name>_energy` sensor in kWh (`device_class: energy`, `total_increasing`) by integrating that power over time — used by the Energy dashboard / cost trackers. |
 | `icon` | yes | [MDI](https://pictogrammers.com/library/mdi/) icon name *without* the `mdi:` prefix, e.g. `"current-ac"`. |
 | `convertMath` | no | A single `<op> <number>` transform applied after parsing, e.g. `"/ 1000"` to convert mA→A, or `"* 2"`. Operators: `+ - * /`. |
 
